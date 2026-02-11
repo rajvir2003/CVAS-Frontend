@@ -18,20 +18,20 @@ const Sidebar: React.FC = () => {
 
   const getNavigationItems = () => {
     switch (user?.role) {
-      case 'worker':
+      case 'WORKER':
         return [
           { path: '/dashboard', icon: Home, label: 'Dashboard' },
           { path: '/vehicle-entry', icon: Truck, label: 'Vehicle Entry' },
           { path: '/profile', icon: Settings, label: 'Profile' }
         ];
-      case 'checkpoint_admin':
+      case 'CHECKPOINT ADMIN':
         return [
           { path: '/dashboard', icon: Home, label: 'Dashboard' },
           { path: '/manage-workers', icon: Users, label: 'Manage Workers' },
           { path: '/vehicle-logs', icon: FileText, label: 'Vehicle Logs' },
           { path: '/profile', icon: Settings, label: 'Profile' }
         ];
-      case 'super_admin':
+      case 'SUPER ADMIN':
         return [
           { path: '/dashboard', icon: Home, label: 'Dashboard' },
           { path: '/manage-checkpoints', icon: Shield, label: 'Manage Checkpoints' },
@@ -80,7 +80,7 @@ const Sidebar: React.FC = () => {
       <div className="mt-auto">
         <div className="border-t border-gray-700 pt-4">
           <div className="mb-4">
-            <p className="text-sm font-medium text-white">{user?.fullName}</p>
+            <p className="text-sm font-medium text-white">{user?.name}</p>
             <p className="text-xs text-gray-400">{user?.serviceNumber}</p>
             <p className="text-xs text-gray-400">{user?.unit}</p>
           </div>
