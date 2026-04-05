@@ -1,112 +1,194 @@
-import React, { useState } from 'react';
-import { Shield, Plus, Edit, Trash2, Search, UserCheck, UserX } from 'lucide-react';
-
-interface Checkpoint {
-  id: string;
-  name: string;
-  status: 'active' | 'inactive';
-  admin: string;
-  adminId: string;
-  vehicles: number;
-  workers: number;
-  createdDate: string;
-}
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Shield, Search, Edit, UserX } from 'lucide-react';
+import { useDispatch, useSelector } from 'react-redux';
+import type { AppDispatch, RootState } from '../../store/store';
+import { fetchCheckpoints, updateCheckpointAdmin } from '../../store/slice/checkpointSlice';
+import { fetchCheckpointAdmins } from '../../store/slice/authSlice';
 
 const ManageCheckpoints: React.FC = () => {
-  const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([
-    {
-      id: '1',
-      name: 'Alpha Checkpoint',
-      status: 'active',
-      admin: 'Lt. Sarah Smith',
-      adminId: '2',
-      vehicles: 284,
-      workers: 8,
-      createdDate: '2024-01-01'
-    },
-    {
-      id: '2',
-      name: 'Bravo Checkpoint',
-      status: 'active',
-      admin: 'Capt. Mike Johnson',
-      adminId: '3',
-      vehicles: 193,
-      workers: 6,
-      createdDate: '2024-01-05'
-    },
-    {
-      id: '3',
-      name: 'Charlie Checkpoint',
-      status: 'active',
-      admin: 'Maj. Emily Davis',
-      adminId: '4',
-      vehicles: 156,
-      workers: 5,
-      createdDate: '2024-01-10'
-    },
-    {
-      id: '4',
-      name: 'Delta Checkpoint',
-      status: 'inactive',
-      admin: 'Not Assigned',
-      adminId: '',
-      vehicles: 0,
-      workers: 0,
-      createdDate: '2024-01-15'
+  const CHECKPOINT_CACHE_TTL_MS = 60_000;
+  const dispatch = useDispatch<AppDispatch>();
+  const { checkpoints, nextCursor, isLoading, isLoadingMore, isAdminActionLoading, lastFetchedAt, error } =
+    useSelector((state: RootState) => state.checkpoint);
+  const {
+    checkpointAdmins,
+    checkpointAdminsNextCursor,
+    isCheckpointAdminsLoading,
+    isCheckpointAdminsLoadingMore,
+  } = useSelector((state: RootState) => state.auth);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [adminSearchTerm, setAdminSearchTerm] = useState('');
+  const [showAdminModal, setShowAdminModal] = useState(false);
+  const [selectedCheckpoint, setSelectedCheckpoint] = useState<{ _id: string; name: string } | null>(null);
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  const adminLoadMoreRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const isCacheFresh =
+      typeof lastFetchedAt === 'number' && Date.now() - lastFetchedAt < CHECKPOINT_CACHE_TTL_MS;
+
+    if (checkpoints.length === 0 || !isCacheFresh) {
+      dispatch(fetchCheckpoints());
     }
+  }, [dispatch, checkpoints.length, lastFetchedAt]);
+
+  const loadMoreCheckpoints = useCallback(() => {
+    if (isLoading || isLoadingMore || !nextCursor) {
+      return;
+    }
+
+    dispatch(fetchCheckpoints({ cursor: nextCursor }));
+  }, [dispatch, isLoading, isLoadingMore, nextCursor]);
+
+  useEffect(() => {
+    const target = loadMoreRef.current;
+
+    if (!target) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const [entry] = entries;
+
+        if (entry.isIntersecting) {
+          loadMoreCheckpoints();
+        }
+      },
+      { threshold: 0.2 }
+    );
+
+    observer.observe(target);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [loadMoreCheckpoints]);
+
+  const filteredCheckpoints = useMemo(
+    () =>
+      checkpoints.filter((checkpoint) =>
+        checkpoint.name.toLowerCase().includes(searchTerm.toLowerCase())
+      ),
+    [checkpoints, searchTerm]
+  );
+
+  const assignedAdminServiceNumbers = useMemo(
+    () =>
+      new Set(
+        checkpoints
+          .map((checkpoint) => checkpoint.admin_id?.serviceNumber)
+          .filter((serviceNumber): serviceNumber is string => Boolean(serviceNumber))
+      ),
+    [checkpoints]
+  );
+
+  const filteredCheckpointAdmins = useMemo(
+    () =>
+      checkpointAdmins.filter((admin) => {
+        const query = adminSearchTerm.toLowerCase();
+        return (
+          !admin.isDeleted &&
+          !admin.checkpoint &&
+          !assignedAdminServiceNumbers.has(admin.serviceNumber) &&
+          (
+            admin.name.toLowerCase().includes(query) ||
+            admin.serviceNumber.toLowerCase().includes(query) ||
+            admin.rank.toLowerCase().includes(query)
+          )
+        );
+      }),
+    [checkpointAdmins, adminSearchTerm, assignedAdminServiceNumbers]
+  );
+
+  const loadMoreCheckpointAdmins = useCallback(() => {
+    if (
+      !showAdminModal ||
+      isCheckpointAdminsLoading ||
+      isCheckpointAdminsLoadingMore ||
+      !checkpointAdminsNextCursor
+    ) {
+      return;
+    }
+
+    dispatch(fetchCheckpointAdmins({ cursor: checkpointAdminsNextCursor }));
+  }, [
+    showAdminModal,
+    isCheckpointAdminsLoading,
+    isCheckpointAdminsLoadingMore,
+    checkpointAdminsNextCursor,
+    dispatch,
   ]);
 
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [showEditModal, setShowEditModal] = useState(false);
-  const [selectedCheckpoint, setSelectedCheckpoint] = useState<Checkpoint | null>(null);
-  const [newCheckpointName, setNewCheckpointName] = useState('');
-  const [searchTerm, setSearchTerm] = useState('');
+  useEffect(() => {
+    const target = adminLoadMoreRef.current;
 
-  const handleAddCheckpoint = () => {
-    if (newCheckpointName.trim()) {
-      const newCheckpoint: Checkpoint = {
-        id: Date.now().toString(),
-        name: newCheckpointName,
-        status: 'inactive',
-        admin: 'Not Assigned',
-        adminId: '',
-        vehicles: 0,
-        workers: 0,
-        createdDate: new Date().toISOString().split('T')[0]
-      };
-      setCheckpoints([...checkpoints, newCheckpoint]);
-      setNewCheckpointName('');
-      setShowAddModal(false);
+    if (!target || !showAdminModal) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const [entry] = entries;
+
+        if (entry.isIntersecting) {
+          loadMoreCheckpointAdmins();
+        }
+      },
+      { threshold: 0.2 }
+    );
+
+    observer.observe(target);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [showAdminModal, loadMoreCheckpointAdmins]);
+
+  const handleOpenAssignAdminModal = (checkpointId: string, checkpointName: string) => {
+    setSelectedCheckpoint({ _id: checkpointId, name: checkpointName });
+    setAdminSearchTerm('');
+    setShowAdminModal(true);
+
+    if (checkpointAdmins.length === 0 && !isCheckpointAdminsLoading) {
+      dispatch(fetchCheckpointAdmins());
     }
   };
 
-  const handleEditCheckpoint = (checkpoint: Checkpoint) => {
-    setSelectedCheckpoint(checkpoint);
-    setShowEditModal(true);
+  const handleCloseAssignAdminModal = () => {
+    setShowAdminModal(false);
+    setSelectedCheckpoint(null);
   };
 
-  const handleRemoveAdmin = (checkpointId: string) => {
-    if (window.confirm('Are you sure you want to remove the admin from this checkpoint?')) {
-      setCheckpoints(checkpoints.map(cp => 
-        cp.id === checkpointId 
-          ? { ...cp, admin: 'Not Assigned', adminId: '', status: 'inactive' }
-          : cp
-      ));
+  const handleSelectCheckpointAdmin = async (serviceNumber: string) => {
+    if (!selectedCheckpoint) {
+      return;
+    }
+
+    try {
+      await dispatch(
+        updateCheckpointAdmin({
+          checkpointId: selectedCheckpoint._id,
+          serviceNumber,
+          action: 'assign',
+        })
+      ).unwrap();
+
+      handleCloseAssignAdminModal();
+    } catch {
+      // error is managed in Redux state
     }
   };
 
-  const handleToggleStatus = (checkpointId: string) => {
-    setCheckpoints(checkpoints.map(cp => 
-      cp.id === checkpointId 
-        ? { ...cp, status: cp.status === 'active' ? 'inactive' : 'active' }
-        : cp
-    ));
+  const handleRemoveAdmin = (checkpointId: string, serviceNumber: string) => {
+    dispatch(
+      updateCheckpointAdmin({
+        checkpointId,
+        serviceNumber,
+        action: 'remove',
+      })
+    );
   };
-
-  const filteredCheckpoints = checkpoints.filter(checkpoint =>
-    checkpoint.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    checkpoint.admin.toLowerCase().includes(searchTerm.toLowerCase())
-  );
 
   return (
     <div className="space-y-6">
@@ -115,16 +197,9 @@ const ManageCheckpoints: React.FC = () => {
           <Shield className="h-8 w-8 text-blue-400" />
           <div>
             <h1 className="text-3xl font-bold text-white">Manage Checkpoints</h1>
-            <p className="text-gray-400">Create and manage security checkpoints</p>
+            <p className="text-gray-400">Checkpoint list from the server</p>
           </div>
         </div>
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
-        >
-          <Plus className="h-5 w-5" />
-          <span>Add Checkpoint</span>
-        </button>
       </div>
 
       <div className="bg-gray-800 p-6 rounded-lg shadow-md border border-gray-700">
@@ -148,127 +223,175 @@ const ManageCheckpoints: React.FC = () => {
                 <th className="text-left py-3 px-4 font-medium text-gray-400">Name</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-400">Status</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-400">Admin</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-400">Vehicles</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-400">Workers</th>
+                <th className="text-left py-3 px-4 font-medium text-gray-400">Users</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-400">Created</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-400">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {filteredCheckpoints.map((checkpoint) => (
-                <tr key={checkpoint.id} className="border-b border-gray-700 hover:bg-gray-700">
+              {isLoading && (
+                <tr>
+                  <td colSpan={6} className="py-8 px-4 text-center text-gray-300">
+                    Loading checkpoints...
+                  </td>
+                </tr>
+              )}
+
+              {!isLoading && error && (
+                <tr>
+                  <td colSpan={6} className="py-8 px-4 text-center text-red-300">
+                    {error}
+                  </td>
+                </tr>
+              )}
+
+              {!isLoading && !error && filteredCheckpoints.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="py-8 px-4 text-center text-gray-300">
+                    No checkpoints found.
+                  </td>
+                </tr>
+              )}
+
+              {!isLoading &&
+                !error &&
+                filteredCheckpoints.map((checkpoint) => (
+                <tr key={checkpoint._id} className="border-b border-gray-700 hover:bg-gray-700">
                   <td className="py-3 px-4 font-medium text-white">{checkpoint.name}</td>
                   <td className="py-3 px-4">
-                    <button
-                      onClick={() => handleToggleStatus(checkpoint.id)}
-                      className={`inline-flex px-2 py-1 rounded-full text-xs font-medium transition-colors ${
-                        checkpoint.status === 'active' 
-                          ? 'bg-green-900 text-green-200 hover:bg-green-800' 
-                          : 'bg-red-900 text-red-200 hover:bg-red-800'
+                    <span
+                      className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${
+                        checkpoint.isDeleted
+                          ? 'bg-red-900 text-red-200'
+                          : 'bg-green-900 text-green-200'
                       }`}
                     >
-                      {checkpoint.status}
-                    </button>
+                      {checkpoint.isDeleted ? 'Inactive' : 'Active'}
+                    </span>
                   </td>
-                  <td className="py-3 px-4 text-gray-300">{checkpoint.admin}</td>
-                  <td className="py-3 px-4 text-gray-300">{checkpoint.vehicles}</td>
-                  <td className="py-3 px-4 text-gray-300">{checkpoint.workers}</td>
-                  <td className="py-3 px-4 text-gray-300">{checkpoint.createdDate}</td>
                   <td className="py-3 px-4">
-                    <div className="flex items-center space-x-2">
+                    {checkpoint.admin_id ? (
+                      <div className="space-y-1">
+                        <p className="text-xs text-white">
+                          {checkpoint.admin_id.rank} {checkpoint.admin_id.name}
+                        </p>
+                      </div>
+                    ) : (
+                      <span className="inline-flex px-2 py-1 rounded-full text-xs font-medium bg-yellow-900 text-yellow-200">
+                        Unassigned
+                      </span>
+                    )}
+                  </td>
+                  <td className="py-3 px-4 text-gray-300">{checkpoint.users.length}</td>
+                  <td className="py-3 px-4 text-gray-300">{new Date(checkpoint.createdAt).toLocaleDateString()}</td>
+                  <td className="py-3 px-4">
+                    {checkpoint.admin_id ? (
                       <button
-                        onClick={() => handleEditCheckpoint(checkpoint)}
+                        onClick={() =>
+                          handleRemoveAdmin(checkpoint._id, checkpoint.admin_id?.serviceNumber ?? '')
+                        }
+                        disabled={isAdminActionLoading}
+                        className="text-red-400 hover:text-red-300 p-1 rounded transition-colors"
+                        title="Remove admin"
+                        aria-label={`Remove admin from ${checkpoint.name}`}
+                      >
+                        <UserX className="h-4 w-4" />
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleOpenAssignAdminModal(checkpoint._id, checkpoint.name)}
                         className="text-blue-400 hover:text-blue-300 p-1 rounded transition-colors"
+                        title="Add admin"
+                        aria-label={`Add admin to ${checkpoint.name}`}
                       >
                         <Edit className="h-4 w-4" />
                       </button>
-                      {checkpoint.adminId && (
-                        <button
-                          onClick={() => handleRemoveAdmin(checkpoint.id)}
-                          className="text-red-400 hover:text-red-300 p-1 rounded transition-colors"
-                        >
-                          <UserX className="h-4 w-4" />
-                        </button>
-                      )}
-                    </div>
+                    )}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+
+          <div ref={loadMoreRef} className="h-2" />
+
+          {isLoadingMore && (
+            <div className="py-4 text-center text-sm text-gray-400">
+              Loading more checkpoints...
+            </div>
+          )}
+
+          {!isLoading && !isLoadingMore && !nextCursor && checkpoints.length > 0 && (
+            <div className="py-4 text-center text-xs text-gray-500">
+              You have reached the end of the checkpoint list.
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Add Checkpoint Modal */}
-      {showAddModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-gray-800 border border-gray-700 rounded-lg p-6 max-w-md w-full">
-            <h3 className="text-lg font-semibold text-white mb-4">Add New Checkpoint</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">
-                  Checkpoint Name
-                </label>
+      {showAdminModal && selectedCheckpoint && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="w-full max-w-xl bg-gray-800 border border-gray-700 rounded-lg shadow-xl">
+            <div className="p-4 border-b border-gray-700">
+              <h3 className="text-lg font-semibold text-white">Assign Checkpoint Admin</h3>
+              <p className="text-sm text-gray-400 mt-1">Checkpoint: {selectedCheckpoint.name}</p>
+            </div>
+
+            <div className="p-4">
+              <div className="relative mb-4">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <input
                   type="text"
-                  value={newCheckpointName}
-                  onChange={(e) => setNewCheckpointName(e.target.value)}
-                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Enter checkpoint name..."
+                  value={adminSearchTerm}
+                  onChange={(e) => setAdminSearchTerm(e.target.value)}
+                  placeholder="Search admin by name, service number, or rank"
+                  className="w-full pl-9 pr-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
-              <div className="flex space-x-3">
-                <button
-                  onClick={() => setShowAddModal(false)}
-                  className="flex-1 bg-gray-600 hover:bg-gray-700 text-white py-2 px-4 rounded-lg transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleAddCheckpoint}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg transition-colors"
-                >
-                  Create
-                </button>
+
+              <div className="max-h-64 overflow-y-auto pr-1 space-y-2">
+                {isCheckpointAdminsLoading && checkpointAdmins.length === 0 && (
+                  <div className="text-sm text-gray-400 py-4 text-center">Loading checkpoint admins...</div>
+                )}
+
+                {!isCheckpointAdminsLoading && filteredCheckpointAdmins.length === 0 && (
+                  <div className="text-sm text-gray-400 py-4 text-center">No matching checkpoint admins found.</div>
+                )}
+
+                {filteredCheckpointAdmins.map((admin) => (
+                  <div
+                    key={admin._id}
+                    className="bg-gray-700/60 border border-gray-600 rounded-lg p-3 flex items-center justify-between"
+                  >
+                    <div>
+                      <p className="text-white text-sm font-medium">{admin.rank} {admin.name}</p>
+                      <p className="text-xs text-gray-400">{admin.serviceNumber}</p>
+                    </div>
+                    <button
+                      onClick={() => handleSelectCheckpointAdmin(admin.serviceNumber)}
+                      disabled={isAdminActionLoading}
+                      className="px-3 py-1.5 rounded-md text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isAdminActionLoading ? 'Assigning...' : 'Select'}
+                    </button>
+                  </div>
+                ))}
+
+                <div ref={adminLoadMoreRef} className="h-2" />
+
+                {isCheckpointAdminsLoadingMore && (
+                  <div className="text-xs text-gray-400 text-center py-2">Loading more admins...</div>
+                )}
               </div>
             </div>
-          </div>
-        </div>
-      )}
 
-      {/* Edit Checkpoint Modal */}
-      {showEditModal && selectedCheckpoint && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-gray-800 border border-gray-700 rounded-lg p-6 max-w-md w-full">
-            <h3 className="text-lg font-semibold text-white mb-4">Edit Checkpoint</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">
-                  Assign Admin (Search by name or service number)
-                </label>
-                <input
-                  type="text"
-                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Search for admin..."
-                />
-              </div>
-              <div className="flex space-x-3">
-                <button
-                  onClick={() => setShowEditModal(false)}
-                  className="flex-1 bg-gray-600 hover:bg-gray-700 text-white py-2 px-4 rounded-lg transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => {
-                    // Assign admin logic here
-                    setShowEditModal(false);
-                  }}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg transition-colors"
-                >
-                  Assign
-                </button>
-              </div>
+            <div className="p-4 border-t border-gray-700 flex justify-end">
+              <button
+                onClick={handleCloseAssignAdminModal}
+                className="px-4 py-2 rounded-md bg-gray-600 hover:bg-gray-500 text-white text-sm"
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>

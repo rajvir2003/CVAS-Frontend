@@ -32,7 +32,7 @@ const Register: React.FC = () => {
     unit: '',
     password: '',
     confirmPassword: '',
-    role: 'worker' as 'worker' | 'checkpoint_admin'
+    role: 'WORKER' as 'WORKER' | 'CHECKPOINT ADMIN'
   });
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -41,7 +41,7 @@ const Register: React.FC = () => {
   
   const dispatch = useDispatch<AppDispatch>();
   const isLoading = useSelector((state: RootState) => state.auth.isLoading);
-  const apiError = useSelector((state: RootState) => state.auth.error);
+  const apiErrorMessages = useSelector((state: RootState) => state.auth.errorMessages);
   const navigate = useNavigate();
 
   const validateForm = () => {
@@ -115,7 +115,7 @@ const Register: React.FC = () => {
       setSuccessMessage(null);
     }
 
-    if (apiError) {
+    if (apiErrorMessages.length > 0) {
       dispatch(clearAuthError());
     }
     
@@ -143,11 +143,20 @@ const Register: React.FC = () => {
             </div>
           )}
 
-          {(errors.general || apiError) && (
+          {errors.general && (
             <div className="bg-red-900 border border-red-700 text-red-100 px-4 py-3 rounded">
-              {errors.general || apiError}
+              {errors.general}
             </div>
           )}
+
+          {apiErrorMessages.map((message, index) => (
+            <div
+              key={`${message}-${index}`}
+              className="bg-red-900 border border-red-700 text-red-100 px-4 py-3 rounded"
+            >
+              {message}
+            </div>
+          ))}
 
           <div>
             <label htmlFor="serviceNumber" className="block text-sm font-medium text-gray-300">
@@ -299,8 +308,8 @@ const Register: React.FC = () => {
               onChange={handleChange}
               className="mt-1 block w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
             >
-              <option value="worker">Worker</option>
-              <option value="checkpoint_admin">Checkpoint Admin</option>
+              <option value="WORKER">Worker</option>
+              <option value="CHECKPOINT ADMIN">Checkpoint Admin</option>
             </select>
           </div>
 

@@ -1,12 +1,14 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import axios from 'axios';
-import Cookies from 'js-cookie';
 import api from '../../api';
 
 interface AuthState {
     isAuthenticated: boolean;
     isLoading: boolean;
+    isCheckpointAdminsLoading: boolean;
+    isCheckpointAdminsLoadingMore: boolean;
     error: string | null;
+    errorMessages: string[];
     serviceNumber: string | null;
     rank: string | null;
     fullName: string | null;
@@ -15,6 +17,8 @@ interface AuthState {
     checkpointId: string | null;
     checkpointName: string | null;
     token: string | null;
+    checkpointAdmins: CheckpointAdmin[];
+    checkpointAdminsNextCursor: string | null;
 }
 
 interface RegisterPayload {
@@ -46,7 +50,7 @@ interface AuthUser {
 interface LoginResponse {
     success: boolean;
     message: string;
-    token: string;
+    token?: string;
     user: AuthUser;
 }
 
@@ -59,30 +63,71 @@ interface RegisterResponse {
     role: string;
 }
 
-const extractErrorMessage = (error: unknown, fallback: string): string => {
+interface CheckpointAdmin {
+    _id: string;
+    serviceNumber: string;
+    rank: string;
+    checkpoint: string | null;
+    name: string;
+    unit: string;
+    isDeleted: boolean;
+    role: string;
+    createdAt: string;
+    updatedAt: string;
+    __v: number;
+}
+
+interface FetchCheckpointAdminsParams {
+    cursor?: string | null;
+    limit?: number;
+}
+
+interface FetchCheckpointAdminsResponse {
+    success: boolean;
+    message: string;
+    adminList: CheckpointAdmin[];
+    nextCursor: string | null;
+}
+
+const extractErrorMessages = (error: unknown, fallback: string): string[] => {
     if (axios.isAxiosError(error)) {
         const data = error.response?.data as
             | {
                   message?: string | string[];
                   error?: string;
                   errors?: Array<{ message?: string; msg?: string } | string>;
+                  validationErrors?: Array<{ field?: string; message?: string }>;
               }
             | undefined;
 
         if (typeof data === 'string') {
-            return data;
+            return [data];
         }
 
         if (Array.isArray(data?.message)) {
-            return data.message.join(', ');
+            const messages = data.message.filter((item) => Boolean(item?.trim()));
+
+            if (messages.length > 0) {
+                return messages;
+            }
         }
 
         if (typeof data?.message === 'string' && data.message.trim()) {
-            return data.message;
+            return [data.message];
         }
 
         if (typeof data?.error === 'string' && data.error.trim()) {
-            return data.error;
+            if (Array.isArray(data.validationErrors) && data.validationErrors.length > 0) {
+                const validationMessages = data.validationErrors
+                    .map((item) => item.message ?? '')
+                    .filter((item) => item.trim().length > 0);
+
+                if (validationMessages.length > 0) {
+                    return validationMessages;
+                }
+            }
+
+            return [data.error];
         }
 
         if (Array.isArray(data?.errors) && data.errors.length > 0) {
@@ -94,24 +139,23 @@ const extractErrorMessage = (error: unknown, fallback: string): string => {
 
                     return item.message ?? item.msg ?? '';
                 })
-                .filter(Boolean)
-                .join(', ');
+                .filter((item) => Boolean(item));
 
-            if (combined) {
+            if (combined.length > 0) {
                 return combined;
             }
         }
 
         if (error.message) {
-            return error.message;
+            return [error.message];
         }
     }
 
     if (error instanceof Error && error.message) {
-        return error.message;
+        return [error.message];
     }
 
-    return fallback;
+    return [fallback];
 };
 
 const getStoredUser = (): AuthUser | null => {
@@ -128,13 +172,15 @@ const getStoredUser = (): AuthUser | null => {
     }
 };
 
-const storedToken = Cookies.get('cvas_token') ?? null;
 const storedUser = getStoredUser();
 
 const initialState: AuthState = {
-    isAuthenticated: Boolean(storedToken && storedUser),
+    isAuthenticated: Boolean(storedUser),
     isLoading: false,
+    isCheckpointAdminsLoading: false,
+    isCheckpointAdminsLoadingMore: false,
     error: null,
+    errorMessages: [],
     serviceNumber: storedUser?.serviceNumber ?? null,
     rank: storedUser?.rank ?? null,
     fullName: storedUser?.fullName ?? storedUser?.name ?? null,
@@ -142,26 +188,27 @@ const initialState: AuthState = {
     role: storedUser?.role ?? null,
     checkpointId: storedUser?.checkpoint ?? storedUser?.checkpointId ?? null,
     checkpointName: storedUser?.checkpointName ?? null,
-    token: storedToken,
+    token: null,
+    checkpointAdmins: [],
+    checkpointAdminsNextCursor: null,
 };
 
 export const registerUser = createAsyncThunk<
     RegisterResponse,
     RegisterPayload,
-    { rejectValue: string }
+    { rejectValue: string[] }
 >(
     'auth/registerUser',
     async (payload, { rejectWithValue }) => {
         try {
             const response = await api.post<RegisterResponse>('/auth/register', payload);
-            console.log(response)
             if (response.data?.success) {
                 return response.data;
             }
 
-            return rejectWithValue(response.data?.message ?? 'Registration failed.');
+            return rejectWithValue([response.data?.message ?? 'Registration failed.']);
         } catch (error: unknown) {
-            return rejectWithValue(extractErrorMessage(error, 'Registration failed.'));
+            return rejectWithValue(extractErrorMessages(error, 'Registration failed.'));
         }
     }
 );
@@ -169,7 +216,7 @@ export const registerUser = createAsyncThunk<
 export const loginUser = createAsyncThunk<
     LoginResponse,
     LoginPayload,
-    { rejectValue: string }
+    { rejectValue: string[] }
 >(
     'auth/loginUser',
     async (payload, { rejectWithValue }) => {
@@ -178,7 +225,40 @@ export const loginUser = createAsyncThunk<
 
             return response.data;
         } catch (error: unknown) {
-            return rejectWithValue(extractErrorMessage(error, 'Invalid credentials.'));
+            return rejectWithValue(extractErrorMessages(error, 'Invalid credentials.'));
+        }
+    }
+);
+
+export const fetchCheckpointAdmins = createAsyncThunk<
+    FetchCheckpointAdminsResponse,
+    FetchCheckpointAdminsParams | undefined,
+    { rejectValue: string[] }
+>(
+    'auth/fetchCheckpointAdmins',
+    async (params, { rejectWithValue }) => {
+        try {
+            const query = new URLSearchParams();
+
+            if (params?.cursor) {
+                query.append('cursor', params.cursor);
+            }
+
+            if (typeof params?.limit === 'number') {
+                query.append('limit', String(params.limit));
+            }
+
+            const response = await api.get<FetchCheckpointAdminsResponse>(
+                `/auth/checkpoint-admins${query.toString() ? `?${query.toString()}` : ''}`
+            );
+
+            if (response.data?.success) {
+                return response.data;
+            }
+
+            return rejectWithValue([response.data?.message ?? 'Failed to fetch checkpoint admins.']);
+        } catch (error: unknown) {
+            return rejectWithValue(extractErrorMessages(error, 'Failed to fetch checkpoint admins.'));
         }
     }
 );
@@ -188,12 +268,14 @@ const authSlice = createSlice({
     initialState,
     reducers: {
         logout: (state) => {
-            Cookies.remove('cvas_token');
             localStorage.removeItem('cvas_user');
 
             state.isAuthenticated = false;
             state.isLoading = false;
+            state.isCheckpointAdminsLoading = false;
+            state.isCheckpointAdminsLoadingMore = false;
             state.error = null;
+            state.errorMessages = [];
             state.serviceNumber = null;
             state.rank = null;
             state.fullName = null;
@@ -202,9 +284,12 @@ const authSlice = createSlice({
             state.checkpointId = null;
             state.checkpointName = null;
             state.token = null;
+            state.checkpointAdmins = [];
+            state.checkpointAdminsNextCursor = null;
         },
         clearAuthError: (state) => {
             state.error = null;
+            state.errorMessages = [];
         },
     },
     extraReducers: (builder) => {
@@ -212,12 +297,14 @@ const authSlice = createSlice({
             .addCase(registerUser.pending, (state) => {
                 state.isLoading = true;
                 state.error = null;
+                state.errorMessages = [];
             })
             .addCase(registerUser.fulfilled, (state, action) => {
                 const { serviceNumber, rank, name, role } = action.payload;
 
                 state.isLoading = false;
                 state.error = null;
+                state.errorMessages = [];
                 state.serviceNumber = serviceNumber;
                 state.rank = rank;
                 state.fullName = name;
@@ -225,25 +312,22 @@ const authSlice = createSlice({
             })
             .addCase(registerUser.rejected, (state, action) => {
                 state.isLoading = false;
-                state.error = action.payload ?? 'Registration failed.';
+                state.errorMessages = action.payload ?? ['Registration failed.'];
+                state.error = state.errorMessages[0] ?? 'Registration failed.';
             })
             .addCase(loginUser.pending, (state) => {
                 state.isLoading = true;
                 state.error = null;
+                state.errorMessages = [];
             })
             .addCase(loginUser.fulfilled, (state, action) => {
                 const { token, user } = action.payload;
-
-                Cookies.set('cvas_token', token, {
-                    expires: 7,
-                    secure: true,
-                    sameSite: 'strict',
-                });
                 localStorage.setItem('cvas_user', JSON.stringify(user));
 
                 state.isAuthenticated = true;
                 state.isLoading = false;
                 state.error = null;
+                state.errorMessages = [];
                 state.serviceNumber = user.serviceNumber ?? null;
                 state.rank = user.rank ?? null;
                 state.fullName = user.fullName ?? user.name ?? null;
@@ -251,12 +335,52 @@ const authSlice = createSlice({
                 state.role = user.role ?? null;
                 state.checkpointId = user.checkpoint ?? user.checkpointId ?? null;
                 state.checkpointName = user.checkpointName ?? null;
-                state.token = token;
+                state.token = token ?? null;
             })
             .addCase(loginUser.rejected, (state, action) => {
                 state.isLoading = false;
                 state.isAuthenticated = false;
-                state.error = action.payload ?? 'Invalid credentials.';
+                state.errorMessages = action.payload ?? ['Invalid credentials.'];
+                state.error = state.errorMessages[0] ?? 'Invalid credentials.';
+            })
+            .addCase(fetchCheckpointAdmins.pending, (state, action) => {
+                const isLoadMore = Boolean(action.meta.arg?.cursor);
+
+                if (isLoadMore) {
+                    state.isCheckpointAdminsLoadingMore = true;
+                } else {
+                    state.isCheckpointAdminsLoading = true;
+                }
+
+                state.error = null;
+                state.errorMessages = [];
+            })
+            .addCase(fetchCheckpointAdmins.fulfilled, (state, action) => {
+                const isLoadMore = Boolean(action.meta.arg?.cursor);
+
+                state.isCheckpointAdminsLoading = false;
+                state.isCheckpointAdminsLoadingMore = false;
+                state.error = null;
+                state.errorMessages = [];
+
+                if (isLoadMore) {
+                    const existingIds = new Set(state.checkpointAdmins.map((admin) => admin._id));
+                    const incoming = action.payload.adminList.filter(
+                        (admin) => !existingIds.has(admin._id)
+                    );
+
+                    state.checkpointAdmins = [...state.checkpointAdmins, ...incoming];
+                } else {
+                    state.checkpointAdmins = action.payload.adminList;
+                }
+
+                state.checkpointAdminsNextCursor = action.payload.nextCursor;
+            })
+            .addCase(fetchCheckpointAdmins.rejected, (state, action) => {
+                state.isCheckpointAdminsLoading = false;
+                state.isCheckpointAdminsLoadingMore = false;
+                state.errorMessages = action.payload ?? ['Failed to fetch checkpoint admins.'];
+                state.error = state.errorMessages[0] ?? 'Failed to fetch checkpoint admins.';
             });
     },
 });

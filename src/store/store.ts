@@ -1,8 +1,10 @@
 import { configureStore } from "@reduxjs/toolkit";
 import authReducer from "./slice/authSlice"
+import checkpointReducer from "./slice/checkpointSlice"
 export const store = configureStore({
     reducer : {
-        auth : authReducer
+        auth : authReducer,
+        checkpoint : checkpointReducer
     },
     devTools : import.meta.env.MODE != 'production',
 })

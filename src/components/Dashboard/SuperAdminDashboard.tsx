@@ -1,8 +1,21 @@
-import React from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { Shield, Users, Truck, Activity, CheckCircle, XCircle, Plus } from 'lucide-react';
+import { useDispatch, useSelector } from 'react-redux';
+import type { AppDispatch, RootState } from '../../store/store';
+import { fetchCheckpoints } from '../../store/slice/checkpointSlice';
 
 const SuperAdminDashboard: React.FC = () => {
+  const dispatch = useDispatch<AppDispatch>();
+  const { checkpoints, isLoading, error } = useSelector((state: RootState) => state.checkpoint);
+
+  useEffect(() => {
+    // Initial dashboard fetch to seed checkpoint state for other screens.
+    if (checkpoints.length === 0) {
+      dispatch(fetchCheckpoints());
+    }
+  }, [dispatch, checkpoints.length]);
+
   const stats = [
     {
       title: 'Total Vehicles',
@@ -37,12 +50,19 @@ const SuperAdminDashboard: React.FC = () => {
     { id: 4, action: 'Worker Added', detail: 'Pvt. Johnson → Charlie Checkpoint', time: '8 hours ago' },
   ];
 
-  const checkpointStatus = [
-    { name: 'Alpha Checkpoint', status: 'Active', admin: 'Lt. Sarah Smith', vehicles: 284 },
-    { name: 'Bravo Checkpoint', status: 'Active', admin: 'Capt. Mike Johnson', vehicles: 193 },
-    { name: 'Charlie Checkpoint', status: 'Active', admin: 'Maj. Emily Davis', vehicles: 156 },
-    { name: 'Delta Checkpoint', status: 'Inactive', admin: 'Not Assigned', vehicles: 0 },
-  ];
+  const checkpointStatus = useMemo(
+    () =>
+      checkpoints.slice(0, 4).map((checkpoint) => ({
+        id: checkpoint._id,
+        name: checkpoint.name,
+        status: checkpoint.isDeleted ? 'Inactive' : 'Active',
+        admin: checkpoint.admin_id
+          ? `${checkpoint.admin_id.rank} ${checkpoint.admin_id.name}`
+          : 'Unassigned',
+        users: checkpoint.users.length,
+      })),
+    [checkpoints]
+  );
 
   const vehiclesByClass = [
     { class: 'Less than 9 ton', count: 423, percentage: 34 },
@@ -140,13 +160,37 @@ const SuperAdminDashboard: React.FC = () => {
                 <th className="text-left py-3 px-4 font-medium text-gray-400">Checkpoint</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-400">Status</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-400">Admin</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-400">Vehicles</th>
+                <th className="text-left py-3 px-4 font-medium text-gray-400">Users</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-400">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {checkpointStatus.map((checkpoint, index) => (
-                <tr key={index} className="border-b border-gray-700 hover:bg-gray-700">
+              {isLoading && checkpointStatus.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="py-8 px-4 text-center text-gray-300">
+                    Loading checkpoints...
+                  </td>
+                </tr>
+              )}
+
+              {!isLoading && error && checkpointStatus.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="py-8 px-4 text-center text-red-300">
+                    {error}
+                  </td>
+                </tr>
+              )}
+
+              {!isLoading && !error && checkpointStatus.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="py-8 px-4 text-center text-gray-300">
+                    No checkpoints available.
+                  </td>
+                </tr>
+              )}
+
+              {checkpointStatus.map((checkpoint) => (
+                <tr key={checkpoint.id} className="border-b border-gray-700 hover:bg-gray-700">
                   <td className="py-3 px-4 font-medium text-white">{checkpoint.name}</td>
                   <td className="py-3 px-4">
                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
@@ -163,7 +207,7 @@ const SuperAdminDashboard: React.FC = () => {
                     </span>
                   </td>
                   <td className="py-3 px-4 text-gray-400">{checkpoint.admin}</td>
-                  <td className="py-3 px-4 text-gray-400">{checkpoint.vehicles}</td>
+                  <td className="py-3 px-4 text-gray-400">{checkpoint.users}</td>
                   <td className="py-3 px-4">
                     <Link 
                       to="/manage-checkpoints"

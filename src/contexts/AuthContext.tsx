@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import axios from 'axios';
-import Cookies from 'js-cookie';
+import api from '../api';
 
 export enum UserRoles  {
   WORKER = 'WORKER',
@@ -56,15 +56,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const token = Cookies.get("cvas_token");
     const userData = localStorage.getItem("cvas_user");
 
-    if (token && userData) {
+    if (userData) {
       try {
         setUser(JSON.parse(userData));
         setIsAuthenticated(true);
       } catch {
-        Cookies.remove("cvas_token");
         localStorage.removeItem("cvas_user");
       }
     }
@@ -73,10 +71,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const login = async (serviceNumber: string, password: string): Promise<LoginResult> => {
     try {
-      const res = await axios.post(`${import.meta.env.VITE_API_BASE_URL}/auth/login`,
-        { serviceNumber, password },
-        // { withCredentials: true }
-      );
+      const res = await api.post('/auth/login', { serviceNumber, password });
 
       if (res.data?.success === false) {
         return {
@@ -85,9 +80,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         };
       }
 
-      const { token, user } = res.data;
+      const user = res.data?.user as User | undefined;
 
-      Cookies.set("cvas_token", token, { expires: 7, secure: true, sameSite: "strict" });
+      if (!user) {
+        return {
+          success: false,
+          message: res.data?.message || 'Login failed.',
+        };
+      }
+
       setUser(user);
       setIsAuthenticated(true);
       localStorage.setItem("cvas_user", JSON.stringify(user));
@@ -125,7 +126,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const register = async (userData: RegisterData): Promise<boolean> => {
     try {
-      const res = await axios.post(`${import.meta.env.VITE_API_BASE_URL}/auth/register`, userData);
+      const res = await api.post('/auth/register', userData);
 
       if (res.data.success) {
         return true; 
@@ -138,7 +139,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const logout = () => {
-    Cookies.remove("cvas_token");
     localStorage.removeItem("cvas_user");
     setUser(null);
     setIsAuthenticated(false);
