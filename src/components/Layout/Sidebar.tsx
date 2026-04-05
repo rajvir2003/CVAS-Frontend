@@ -7,33 +7,31 @@ import {
   Shield, 
   Settings, 
   LogOut,
-  FileText,
-  Plus,
-  CheckCircle
+  FileText
 } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth, UserRoles } from '../../contexts/AuthContext';
 
 const Sidebar: React.FC = () => {
   const { user, logout } = useAuth();
 
   const getNavigationItems = () => {
     switch (user?.role) {
-      case 'WORKER':
+      case  UserRoles.WORKER:
         return [
-          { path: '/dashboard', icon: Home, label: 'Dashboard' },
+          { path: '/worker-dashboard', icon: Home, label: 'Dashboard' },
           { path: '/vehicle-entry', icon: Truck, label: 'Vehicle Entry' },
           { path: '/profile', icon: Settings, label: 'Profile' }
         ];
-      case 'CHECKPOINT ADMIN':
+      case UserRoles.CHECKPOINT_ADMIN:
         return [
-          { path: '/dashboard', icon: Home, label: 'Dashboard' },
+          { path: '/checkpoint-admin-dashboard', icon: Home, label: 'Dashboard' },
           { path: '/manage-workers', icon: Users, label: 'Manage Workers' },
           { path: '/vehicle-logs', icon: FileText, label: 'Vehicle Logs' },
           { path: '/profile', icon: Settings, label: 'Profile' }
         ];
-      case 'SUPER ADMIN':
+      case UserRoles.SUPER_ADMIN:
         return [
-          { path: '/dashboard', icon: Home, label: 'Dashboard' },
+          { path: '/super-admin-dashboard', icon: Home, label: 'Dashboard' },
           { path: '/manage-checkpoints', icon: Shield, label: 'Manage Checkpoints' },
           { path: '/all-vehicles', icon: Truck, label: 'All Vehicles' },
           { path: '/profile', icon: Settings, label: 'Profile' }
@@ -80,9 +78,9 @@ const Sidebar: React.FC = () => {
       <div className="mt-auto">
         <div className="border-t border-gray-700 pt-4">
           <div className="mb-4">
-            <p className="text-sm font-medium text-white">{user?.name}</p>
+            <p className="text-sm font-medium text-white">{`${user?.rank} ${user?.name}`}</p>
             <p className="text-xs text-gray-400">{user?.serviceNumber}</p>
-            <p className="text-xs text-gray-400">{user?.unit}</p>
+            <p className="text-xs text-gray-400">{user?.role}</p>
           </div>
           <button
             onClick={logout}

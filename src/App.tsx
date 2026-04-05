@@ -50,6 +50,33 @@ function App() {
                 </ProtectedRoute>
               }
             />
+
+            <Route
+              path="/worker-dashboard"
+              element={
+                <ProtectedRoute requiredRole={['WORKER']}>
+                  <WorkerDashboard />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/checkpoint-admin-dashboard"
+              element={
+                <ProtectedRoute requiredRole={['CHECKPOINT ADMIN']}>
+                  <CheckpointAdminDashboard />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/super-admin-dashboard"
+              element={
+                <ProtectedRoute requiredRole={['SUPER ADMIN']}>
+                  <SuperAdminDashboard />
+                </ProtectedRoute>
+              }
+            />
             
             <Route
               path="/vehicle-entry"

@@ -2,16 +2,30 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import axios from 'axios';
 import Cookies from 'js-cookie';
 
+export enum UserRoles  {
+  WORKER = 'WORKER',
+  CHECKPOINT_ADMIN = 'CHECKPOINT ADMIN',
+  SUPER_ADMIN = 'SUPER ADMIN'
+}
+
 interface User {
+  serviceNumber : string;
   name: string;
   rank: string;
-  role: 'WORKER' | 'CHECKPOINT ADMIN' | 'SUPER ADMIN';
+  role: UserRoles;
   checkpoint?: string;
+  checkpointName?: string;
+}
+
+interface LoginResult {
+  success: boolean;
+  message: string;
+  user?: User;
 }
 
 interface AuthContextType {
   user: User | null;
-  login: (email: string, password: string) => Promise<boolean>;
+  login: (serviceNumber: string, password: string) => Promise<LoginResult>;
   register: (userData: RegisterData) => Promise<boolean>;
   logout: () => void;
   isAuthenticated: boolean;
@@ -57,12 +71,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setLoading(false);
   }, []);
 
-  const login = async (serviceNumber: string, password: string): Promise<boolean> => {
+  const login = async (serviceNumber: string, password: string): Promise<LoginResult> => {
     try {
       const res = await axios.post(`${import.meta.env.VITE_API_BASE_URL}/auth/login`,
         { serviceNumber, password },
         // { withCredentials: true }
       );
+
+      if (res.data?.success === false) {
+        return {
+          success: false,
+          message: res.data?.message || 'Login failed.',
+        };
+      }
 
       const { token, user } = res.data;
 
@@ -71,9 +92,34 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setIsAuthenticated(true);
       localStorage.setItem("cvas_user", JSON.stringify(user));
 
-      return true;
-    } catch (error) {
-      return false;
+      return {
+        success: true,
+        message: res.data?.message || 'Login successful.',
+        user,
+      };
+    } catch (error: unknown) {
+      let message = 'An error occurred. Please try again.';
+
+      if (axios.isAxiosError(error)) {
+        const data = error.response?.data as
+          | { message?: string | string[]; error?: string }
+          | undefined;
+
+        if (typeof data?.message === 'string' && data.message.trim()) {
+          message = data.message;
+        } else if (Array.isArray(data?.message) && data.message.length > 0) {
+          message = data.message.join(', ');
+        } else if (typeof data?.error === 'string' && data.error.trim()) {
+          message = data.error;
+        } else if (error.message) {
+          message = error.message;
+        }
+      }
+
+      return {
+        success: false,
+        message,
+      };
     }
   };
 

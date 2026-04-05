@@ -27,7 +27,7 @@ const WorkerDashboard: React.FC = () => {
     },
     {
       title: 'Checkpoint',
-      value: user?.checkpoint || 'Unassigned',
+      value: user?.checkpointName || 'Unassigned',
       icon: User,
       color: 'bg-purple-500'
     }

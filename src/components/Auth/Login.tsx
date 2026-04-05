@@ -10,6 +10,7 @@ const Login: React.FC = () => {
   });
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   
   const { login } = useAuth();
@@ -35,13 +36,28 @@ const Login: React.FC = () => {
     setIsLoading(true);
     
     try {
-      const success = await login(formData.serviceNumber, formData.password);
-      if (success) {
-        navigate('/dashboard');
+      const result = await login(formData.serviceNumber, formData.password);
+
+      if (result.success) {
+        setSuccessMessage(result.message || 'Login successful.');
+
+        let redirectPath = '/dashboard';
+
+        if (result.user?.role === 'WORKER') {
+          redirectPath = '/worker-dashboard';
+        } else if (result.user?.role === 'SUPER ADMIN') {
+          redirectPath = '/super-admin-dashboard';
+        } else if (result.user?.role === 'CHECKPOINT ADMIN') {
+          redirectPath = '/checkpoint-admin-dashboard';
+        }
+
+        setTimeout(() => {
+          navigate(redirectPath);
+        }, 900);
       } else {
-        setErrors({ general: 'Invalid service number or password' });
+        setErrors({ general: result.message || 'Invalid service number or password' });
       }
-    } catch (error) {
+    } catch {
       setErrors({ general: 'An error occurred. Please try again.' });
     } finally {
       setIsLoading(false);
@@ -51,6 +67,10 @@ const Login: React.FC = () => {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
+
+    if (successMessage) {
+      setSuccessMessage(null);
+    }
     
     if (errors[name]) {
       setErrors(prev => ({ ...prev, [name]: '' }));
@@ -69,6 +89,12 @@ const Login: React.FC = () => {
         </div>
 
         <form className="space-y-6" onSubmit={handleSubmit}>
+          {successMessage && (
+            <div className="bg-green-900 border border-green-700 text-green-100 px-4 py-3 rounded">
+              {successMessage}
+            </div>
+          )}
+
           {errors.general && (
             <div className="bg-red-900 border border-red-700 text-red-100 px-4 py-3 rounded">
               {errors.general}

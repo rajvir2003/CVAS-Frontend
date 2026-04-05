@@ -10,7 +10,7 @@ const Profile: React.FC = () => {
   const profileData = [
     {
       label: 'Service Number',
-      value: user.serviceNumber,
+      value: user.checkpointName,
       icon: Shield
     },
     {
@@ -38,7 +38,7 @@ const Profile: React.FC = () => {
   if (user.checkpoint) {
     profileData.push({
       label: 'Checkpoint',
-      value: user.checkpoint,
+      value: user.checkpointName,
       icon: Shield
     });
   }

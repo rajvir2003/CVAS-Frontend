@@ -1,14 +1,35 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Shield, Eye, EyeOff } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
+import { useDispatch, useSelector } from 'react-redux';
+import type { AppDispatch, RootState } from '../../store/store';
+import { clearAuthError, registerUser } from '../../store/slice/authSlice';
+
+const rankOptions = [
+  'General',
+  'Lieutenant General',
+  'Major General',
+  'Brigadier',
+  'Colonel',
+  'Lieutenant Colonel',
+  'Major',
+  'Captain',
+  'Lieutenant',
+  'Subedar Major',
+  'Subedar',
+  'Naib Subedar',
+  'Havildar',
+  'Naik',
+  'Lance Naik',
+  'Sepoy',
+];
 
 const Register: React.FC = () => {
   const [formData, setFormData] = useState({
     serviceNumber: '',
+    rank: '',
     fullName: '',
     unit: '',
-    email: '',
     password: '',
     confirmPassword: '',
     role: 'worker' as 'worker' | 'checkpoint_admin'
@@ -16,9 +37,11 @@ const Register: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [isLoading, setIsLoading] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   
-  const { register } = useAuth();
+  const dispatch = useDispatch<AppDispatch>();
+  const isLoading = useSelector((state: RootState) => state.auth.isLoading);
+  const apiError = useSelector((state: RootState) => state.auth.error);
   const navigate = useNavigate();
 
   const validateForm = () => {
@@ -26,6 +49,10 @@ const Register: React.FC = () => {
 
     if (!formData.serviceNumber.trim()) {
       newErrors.serviceNumber = 'Service Number is required';
+    }
+
+    if (!formData.rank) {
+      newErrors.rank = 'Rank is required';
     }
 
     if (!formData.fullName.trim()) {
@@ -36,12 +63,6 @@ const Register: React.FC = () => {
       newErrors.unit = 'Unit is required';
     } else if (!/^\d+-\w+$/.test(formData.unit)) {
       newErrors.unit = 'Unit must be in format: battalionNo-regiment (e.g., 32-Grenadiers)';
-    }
-
-    if (!formData.email.trim()) {
-      newErrors.email = 'Email is required';
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      newErrors.email = 'Please enter a valid email';
     }
 
     if (!formData.password) {
@@ -65,25 +86,38 @@ const Register: React.FC = () => {
     
     if (!validateForm()) return;
 
-    setIsLoading(true);
-    
     try {
-      const success = await register(formData);
-      if (success) {
-        navigate('/dashboard');
-      } else {
-        setErrors({ general: 'Registration failed. Please try again.' });
-      }
-    } catch (error) {
-      setErrors({ general: 'An error occurred. Please try again.' });
-    } finally {
-      setIsLoading(false);
+      const payload = {
+        serviceNumber: formData.serviceNumber.trim(),
+        rank: formData.rank,
+        name: formData.fullName.trim(),
+        unit: formData.unit.trim(),
+        password: formData.password,
+        role: formData.role,
+      };
+
+      const result = await dispatch(registerUser(payload)).unwrap();
+      setSuccessMessage(result.message ?? 'Registration successful.');
+
+      setTimeout(() => {
+        navigate('/login');
+      }, 1200);
+    } catch {
+      // API error is handled through Redux state.
     }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
+
+    if (successMessage) {
+      setSuccessMessage(null);
+    }
+
+    if (apiError) {
+      dispatch(clearAuthError());
+    }
     
     // Clear error when user starts typing
     if (errors[name]) {
@@ -103,9 +137,15 @@ const Register: React.FC = () => {
         </div>
 
         <form className="space-y-4" onSubmit={handleSubmit}>
-          {errors.general && (
+          {successMessage && (
+            <div className="bg-green-900 border border-green-700 text-green-100 px-4 py-3 rounded">
+              {successMessage}
+            </div>
+          )}
+
+          {(errors.general || apiError) && (
             <div className="bg-red-900 border border-red-700 text-red-100 px-4 py-3 rounded">
-              {errors.general}
+              {errors.general || apiError}
             </div>
           )}
 
@@ -128,8 +168,31 @@ const Register: React.FC = () => {
           </div>
 
           <div>
+            <label htmlFor="rank" className="block text-sm font-medium text-gray-300">
+              Rank
+            </label>
+            <select
+              id="rank"
+              name="rank"
+              value={formData.rank}
+              onChange={handleChange}
+              className="mt-1 block w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+            >
+              <option value="">Select rank</option>
+              {rankOptions.map((rank) => (
+                <option key={rank} value={rank}>
+                  {rank}
+                </option>
+              ))}
+            </select>
+            {errors.rank && (
+              <p className="mt-1 text-sm text-red-400">{errors.rank}</p>
+            )}
+          </div>
+
+          <div>
             <label htmlFor="fullName" className="block text-sm font-medium text-gray-300">
-              Full Rank + Full Name
+              Full Name
             </label>
             <input
               id="fullName"
@@ -138,7 +201,7 @@ const Register: React.FC = () => {
               value={formData.fullName}
               onChange={handleChange}
               className="mt-1 block w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-              placeholder="e.g., Captain John Doe"
+              placeholder="e.g., Ravi Kumar"
             />
             {errors.fullName && (
               <p className="mt-1 text-sm text-red-400">{errors.fullName}</p>
@@ -160,24 +223,6 @@ const Register: React.FC = () => {
             />
             {errors.unit && (
               <p className="mt-1 text-sm text-red-400">{errors.unit}</p>
-            )}
-          </div>
-
-          <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-300">
-              Email
-            </label>
-            <input
-              id="email"
-              name="email"
-              type="email"
-              value={formData.email}
-              onChange={handleChange}
-              className="mt-1 block w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-              placeholder="Enter email address"
-            />
-            {errors.email && (
-              <p className="mt-1 text-sm text-red-400">{errors.email}</p>
             )}
           </div>
 
