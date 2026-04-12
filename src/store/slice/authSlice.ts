@@ -7,6 +7,8 @@ interface AuthState {
     isLoading: boolean;
     isCheckpointAdminsLoading: boolean;
     isCheckpointAdminsLoadingMore: boolean;
+    isWorkersLoading: boolean;
+    isWorkersLoadingMore: boolean;
     error: string | null;
     errorMessages: string[];
     serviceNumber: string | null;
@@ -19,6 +21,8 @@ interface AuthState {
     token: string | null;
     checkpointAdmins: CheckpointAdmin[];
     checkpointAdminsNextCursor: string | null;
+    workers: Worker[];
+    workersNextCursor: string | null;
 }
 
 interface RegisterPayload {
@@ -86,6 +90,32 @@ interface FetchCheckpointAdminsResponse {
     success: boolean;
     message: string;
     adminList: CheckpointAdmin[];
+    nextCursor: string | null;
+}
+
+interface Worker {
+    _id: string;
+    serviceNumber: string;
+    rank: string;
+    checkpoint: string | null;
+    name: string;
+    unit: string;
+    isDeleted: boolean;
+    role: string;
+    createdAt: string;
+    updatedAt: string;
+    __v: number;
+}
+
+interface FetchWorkersParams {
+    cursor?: string | null;
+    limit?: number;
+}
+
+interface FetchWorkersResponse {
+    success: boolean;
+    message: string;
+    workers: Worker[];
     nextCursor: string | null;
 }
 
@@ -179,6 +209,8 @@ const initialState: AuthState = {
     isLoading: false,
     isCheckpointAdminsLoading: false,
     isCheckpointAdminsLoadingMore: false,
+    isWorkersLoading: false,
+    isWorkersLoadingMore: false,
     error: null,
     errorMessages: [],
     serviceNumber: storedUser?.serviceNumber ?? null,
@@ -191,6 +223,8 @@ const initialState: AuthState = {
     token: null,
     checkpointAdmins: [],
     checkpointAdminsNextCursor: null,
+    workers: [],
+    workersNextCursor: null,
 };
 
 export const registerUser = createAsyncThunk<
@@ -263,6 +297,39 @@ export const fetchCheckpointAdmins = createAsyncThunk<
     }
 );
 
+export const fetchWorkers = createAsyncThunk<
+    FetchWorkersResponse,
+    FetchWorkersParams | undefined,
+    { rejectValue: string[] }
+>(
+    'auth/fetchWorkers',
+    async (params, { rejectWithValue }) => {
+        try {
+            const query = new URLSearchParams();
+
+            if (params?.cursor) {
+                query.append('cursor', params.cursor);
+            }
+
+            if (typeof params?.limit === 'number') {
+                query.append('limit', String(params.limit));
+            }
+
+            const response = await api.get<FetchWorkersResponse>(
+                `/auth/workers${query.toString() ? `?${query.toString()}` : ''}`
+            );
+
+            if (response.data?.success) {
+                return response.data;
+            }
+
+            return rejectWithValue([response.data?.message ?? 'Failed to fetch workers.']);
+        } catch (error: unknown) {
+            return rejectWithValue(extractErrorMessages(error, 'Failed to fetch workers.'));
+        }
+    }
+);
+
 const authSlice = createSlice({
     name: 'auth',
     initialState,
@@ -274,6 +341,8 @@ const authSlice = createSlice({
             state.isLoading = false;
             state.isCheckpointAdminsLoading = false;
             state.isCheckpointAdminsLoadingMore = false;
+            state.isWorkersLoading = false;
+            state.isWorkersLoadingMore = false;
             state.error = null;
             state.errorMessages = [];
             state.serviceNumber = null;
@@ -286,6 +355,8 @@ const authSlice = createSlice({
             state.token = null;
             state.checkpointAdmins = [];
             state.checkpointAdminsNextCursor = null;
+            state.workers = [];
+            state.workersNextCursor = null;
         },
         clearAuthError: (state) => {
             state.error = null;
@@ -381,6 +452,45 @@ const authSlice = createSlice({
                 state.isCheckpointAdminsLoadingMore = false;
                 state.errorMessages = action.payload ?? ['Failed to fetch checkpoint admins.'];
                 state.error = state.errorMessages[0] ?? 'Failed to fetch checkpoint admins.';
+            })
+            .addCase(fetchWorkers.pending, (state, action) => {
+                const isLoadMore = Boolean(action.meta.arg?.cursor);
+
+                if (isLoadMore) {
+                    state.isWorkersLoadingMore = true;
+                } else {
+                    state.isWorkersLoading = true;
+                }
+
+                state.error = null;
+                state.errorMessages = [];
+            })
+            .addCase(fetchWorkers.fulfilled, (state, action) => {
+                const isLoadMore = Boolean(action.meta.arg?.cursor);
+
+                state.isWorkersLoading = false;
+                state.isWorkersLoadingMore = false;
+                state.error = null;
+                state.errorMessages = [];
+
+                if (isLoadMore) {
+                    const existingIds = new Set(state.workers.map((worker) => worker._id));
+                    const incoming = action.payload.workers.filter(
+                        (worker) => !existingIds.has(worker._id)
+                    );
+
+                    state.workers = [...state.workers, ...incoming];
+                } else {
+                    state.workers = action.payload.workers;
+                }
+
+                state.workersNextCursor = action.payload.nextCursor;
+            })
+            .addCase(fetchWorkers.rejected, (state, action) => {
+                state.isWorkersLoading = false;
+                state.isWorkersLoadingMore = false;
+                state.errorMessages = action.payload ?? ['Failed to fetch workers.'];
+                state.error = state.errorMessages[0] ?? 'Failed to fetch workers.';
             });
     },
 });

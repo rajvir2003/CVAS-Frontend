@@ -7,11 +7,17 @@ import {
   Shield, 
   Settings, 
   LogOut,
-  FileText
+  FileText,
+  X
 } from 'lucide-react';
 import { useAuth, UserRoles } from '../../contexts/AuthContext';
 
-const Sidebar: React.FC = () => {
+interface SidebarProps {
+  isOpen?: boolean;
+  onClose?: () => void;
+}
+
+const Sidebar: React.FC<SidebarProps> = ({ isOpen = false, onClose }) => {
   const { user, logout } = useAuth();
 
   const getNavigationItems = () => {
@@ -44,54 +50,81 @@ const Sidebar: React.FC = () => {
   const navigationItems = getNavigationItems();
 
   return (
-    <div className="bg-gray-900 text-white w-64 min-h-screen p-4 flex flex-col">
-      <div className="mb-8">
-        <div className="flex items-center space-x-2 mb-2">
-          <Shield className="h-8 w-8 text-green-400" />
-          <span className="text-xl font-bold">CVAS</span>
-        </div>
-        <p className="text-sm text-gray-400">Civil Vehicle Acquisition System</p>
-      </div>
+    <>
+      <div
+        onClick={onClose}
+        className={`fixed inset-0 bg-black/50 z-30 transition-opacity md:hidden ${
+          isOpen ? 'opacity-100' : 'pointer-events-none opacity-0'
+        }`}
+      />
 
-      <nav className="flex-1">
-        <ul className="space-y-2">
-          {navigationItems.map((item) => (
-            <li key={item.path}>
-              <NavLink
-                to={item.path}
-                className={({ isActive }) =>
-                  `flex items-center space-x-3 px-3 py-2 rounded-lg transition-colors ${
-                    isActive
-                      ? 'bg-green-700 text-white'
-                      : 'text-gray-300 hover:bg-gray-800 hover:text-white'
-                  }`
-                }
-              >
-                <item.icon className="h-5 w-5" />
-                <span>{item.label}</span>
-              </NavLink>
-            </li>
-          ))}
-        </ul>
-      </nav>
-
-      <div className="mt-auto">
-        <div className="border-t border-gray-700 pt-4">
-          <div className="mb-4">
-            <p className="text-sm font-medium text-white">{`${user?.rank} ${user?.name}`}</p>
-            <p className="text-xs text-gray-400">{user?.serviceNumber}</p>
-            <p className="text-xs text-gray-400">{user?.role}</p>
-          </div>
+      <div
+        className={`bg-gray-900 text-white w-64 min-h-screen p-4 flex flex-col fixed md:static inset-y-0 left-0 z-40 transform transition-transform duration-300 ${
+          isOpen ? 'translate-x-0' : '-translate-x-full'
+        } md:translate-x-0`}
+      >
+        <div className="md:hidden flex justify-end mb-2">
           <button
-            onClick={logout}
-            className="flex items-center space-x-2 w-full px-3 py-2 text-gray-300 hover:bg-gray-800 hover:text-white rounded-lg transition-colors"
+            onClick={onClose}
+            className="p-2 rounded-md text-gray-300 hover:text-white hover:bg-gray-800 transition-colors"
+            aria-label="Close sidebar"
           >
-            <LogOut className="h-5 w-5" />
-            <span>Logout</span>
+            <X className="h-5 w-5" />
           </button>
         </div>
+
+        <div className="mb-8">
+          <div className="flex items-center space-x-2 mb-2">
+            <Shield className="h-8 w-8 text-green-400" />
+            <span className="text-xl font-bold">CVAS</span>
+          </div>
+          <p className="text-sm text-gray-400">Civil Vehicle Acquisition System</p>
+        </div>
+
+        <nav className="flex-1">
+          <ul className="space-y-2">
+            {navigationItems.map((item) => (
+              <li key={item.path}>
+                <NavLink
+                  to={item.path}
+                  onClick={onClose}
+                  className={({ isActive }) =>
+                    `flex items-center space-x-3 px-3 py-2 rounded-lg transition-colors ${
+                      isActive
+                        ? 'bg-green-700 text-white'
+                        : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+                    }`
+                  }
+                >
+                  <item.icon className="h-5 w-5" />
+                  <span>{item.label}</span>
+                </NavLink>
+              </li>
+            ))}
+          </ul>
+        </nav>
+
+        <div className="mt-auto">
+          <div className="border-t border-gray-700 pt-4">
+            <div className="mb-4">
+              <p className="text-sm font-medium text-white">{`${user?.rank} ${user?.name}`}</p>
+              <p className="text-xs text-gray-400">{user?.serviceNumber}</p>
+              <p className="text-xs text-gray-400">{user?.role}</p>
+            </div>
+            <button
+              onClick={() => {
+                logout();
+                onClose?.();
+              }}
+              className="flex items-center space-x-2 w-full px-3 py-2 text-red-300 bg-red-900/30 hover:bg-red-600 hover:text-white rounded-lg transition-colors"
+            >
+              <LogOut className="h-5 w-5" />
+              <span>Logout</span>
+            </button>
+          </div>
+        </div>
       </div>
-    </div>
+    </>
   );
 };
 

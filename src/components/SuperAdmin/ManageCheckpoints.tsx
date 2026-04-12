@@ -1,8 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Shield, Search, Edit, UserX } from 'lucide-react';
+import { Shield, Search, Edit, UserX, X } from 'lucide-react';
 import { useDispatch, useSelector } from 'react-redux';
 import type { AppDispatch, RootState } from '../../store/store';
-import { fetchCheckpoints, updateCheckpointAdmin } from '../../store/slice/checkpointSlice';
+import {
+  createCheckpoint,
+  fetchCheckpoints,
+  updateCheckpointAdmin,
+} from '../../store/slice/checkpointSlice';
 import { fetchCheckpointAdmins } from '../../store/slice/authSlice';
 
 const ManageCheckpoints: React.FC = () => {
@@ -18,6 +22,11 @@ const ManageCheckpoints: React.FC = () => {
   } = useSelector((state: RootState) => state.auth);
   const [searchTerm, setSearchTerm] = useState('');
   const [adminSearchTerm, setAdminSearchTerm] = useState('');
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newCheckpointName, setNewCheckpointName] = useState('');
+  const [isCreatingCheckpoint, setIsCreatingCheckpoint] = useState(false);
+  const [createCheckpointError, setCreateCheckpointError] = useState<string | null>(null);
+  const [createCheckpointSuccess, setCreateCheckpointSuccess] = useState<string | null>(null);
   const [showAdminModal, setShowAdminModal] = useState(false);
   const [selectedCheckpoint, setSelectedCheckpoint] = useState<{ _id: string; name: string } | null>(null);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
@@ -190,6 +199,47 @@ const ManageCheckpoints: React.FC = () => {
     );
   };
 
+  const handleOpenCreateModal = () => {
+    setShowCreateModal(true);
+    setCreateCheckpointError(null);
+    setCreateCheckpointSuccess(null);
+  };
+
+  const handleClearCreateCheckpoint = () => {
+    setNewCheckpointName('');
+    setCreateCheckpointError(null);
+    setCreateCheckpointSuccess(null);
+  };
+
+  const handleCreateCheckpoint = async () => {
+    const trimmedName = newCheckpointName.trim();
+
+    if (!trimmedName) {
+      setCreateCheckpointError('Checkpoint name is required.');
+      setCreateCheckpointSuccess(null);
+      return;
+    }
+
+    try {
+      setIsCreatingCheckpoint(true);
+      setCreateCheckpointError(null);
+
+      const response = await dispatch(createCheckpoint({ name: trimmedName })).unwrap();
+
+      setShowCreateModal(false);
+      setNewCheckpointName('');
+      setSearchTerm('');
+      setCreateCheckpointSuccess(response.message || 'Checkpoint created successfully.');
+    } catch (err) {
+      setCreateCheckpointError(
+        typeof err === 'string' && err.trim() ? err : 'Failed to create checkpoint.'
+      );
+      setCreateCheckpointSuccess(null);
+    } finally {
+      setIsCreatingCheckpoint(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -200,7 +250,21 @@ const ManageCheckpoints: React.FC = () => {
             <p className="text-gray-400">Checkpoint list from the server</p>
           </div>
         </div>
+
+        <button
+          type="button"
+          onClick={handleOpenCreateModal}
+          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors"
+        >
+          create checkpoint
+        </button>
       </div>
+
+      {createCheckpointSuccess && (
+        <div className="rounded-md border border-green-700 bg-green-900/40 px-4 py-3 text-sm text-green-200">
+          {createCheckpointSuccess}
+        </div>
+      )}
 
       <div className="bg-gray-800 p-6 rounded-lg shadow-md border border-gray-700">
         <div className="flex items-center space-x-4 mb-6">
@@ -391,6 +455,61 @@ const ManageCheckpoints: React.FC = () => {
                 className="px-4 py-2 rounded-md bg-gray-600 hover:bg-gray-500 text-white text-sm"
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCreateModal && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-gray-800 border border-gray-700 rounded-lg shadow-xl">
+            <div className="p-4 border-b border-gray-700 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-white">Create Checkpoint</h3>
+              <button
+                type="button"
+                onClick={() => setShowCreateModal(false)}
+                aria-label="Close create checkpoint dialog"
+                className="text-gray-400 hover:text-white transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-3">
+              <label htmlFor="checkpointName" className="text-sm text-gray-300 block">
+                Checkpoint Name
+              </label>
+              <input
+                id="checkpointName"
+                type="text"
+                value={newCheckpointName}
+                onChange={(e) => setNewCheckpointName(e.target.value)}
+                placeholder="Enter checkpoint name"
+                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500"
+              />
+
+              {createCheckpointError && (
+                <p className="text-sm text-red-300">{createCheckpointError}</p>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-gray-700 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={handleClearCreateCheckpoint}
+                disabled={isCreatingCheckpoint}
+                className="px-4 py-2 rounded-md bg-gray-600 hover:bg-gray-500 text-white text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Clear
+              </button>
+              <button
+                type="button"
+                onClick={handleCreateCheckpoint}
+                disabled={isCreatingCheckpoint}
+                className="px-4 py-2 rounded-md bg-green-600 hover:bg-green-700 text-white text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isCreatingCheckpoint ? 'Creating...' : 'Create'}
               </button>
             </div>
           </div>

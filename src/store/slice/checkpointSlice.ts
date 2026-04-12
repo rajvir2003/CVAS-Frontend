@@ -26,12 +26,49 @@ interface GetCheckpointsResponse {
 	nextCursor: string | null;
 }
 
+interface CreateCheckpointPayload {
+	name: string;
+}
+
+interface CreateCheckpointResponse {
+	success: boolean;
+	message: string;
+	checkpoint: Checkpoint;
+}
+
+interface CheckpointUser {
+	_id: string;
+	serviceNumber: string;
+	name: string;
+	rank: string;
+	role: string;
+	checkpoint: string;
+}
+
+interface CurrentCheckpoint {
+	_id: string;
+	name: string;
+	isDeleted: boolean;
+	users: CheckpointUser[];
+	createdAt: string;
+	updatedAt: string;
+	__v: number;
+	admin_id?: string | null;
+}
+
+interface GetCurrentCheckpointResponse {
+	success: boolean;
+	message: string;
+	checkpoint: CurrentCheckpoint;
+}
+
 interface FetchCheckpointsParams {
 	cursor?: string | null;
 	limit?: number;
 }
 
 type CheckpointAdminAction = 'assign' | 'remove';
+type CheckpointWorkerAction = 'assign' | 'remove';
 
 interface CheckpointAdminUser {
 	_id: string;
@@ -55,13 +92,27 @@ interface UpdateCheckpointAdminResponse {
 	checkpoint_admin: CheckpointAdminUser | null;
 }
 
+interface UpdateCheckpointWorkerPayload {
+	serviceNumber: string;
+	action: CheckpointWorkerAction;
+}
+
+interface UpdateCheckpointWorkerResponse {
+	success: boolean;
+	message: string;
+	worker: CheckpointUser | null;
+}
+
 interface CheckpointState {
 	checkpoints: Checkpoint[];
+	currentCheckpoint: CurrentCheckpoint | null;
 	nextCursor: string | null;
 	message: string | null;
 	isLoading: boolean;
 	isLoadingMore: boolean;
 	isAdminActionLoading: boolean;
+	isWorkerActionLoading: boolean;
+	isCurrentCheckpointLoading: boolean;
 	lastFetchedAt: number | null;
 	error: string | null;
 }
@@ -123,11 +174,14 @@ const extractErrorMessage = (error: unknown, fallback: string): string => {
 
 const initialState: CheckpointState = {
 	checkpoints: [],
+	currentCheckpoint: null,
 	nextCursor: null,
 	message: null,
 	isLoading: false,
 	isLoadingMore: false,
 	isAdminActionLoading: false,
+	isWorkerActionLoading: false,
+	isCurrentCheckpointLoading: false,
 	lastFetchedAt: null,
 	error: null,
 };
@@ -162,6 +216,26 @@ export const fetchCheckpoints = createAsyncThunk<
 	}
 });
 
+export const createCheckpoint = createAsyncThunk<
+	CreateCheckpointResponse,
+	CreateCheckpointPayload,
+	{ rejectValue: string }
+>('checkpoint/createCheckpoint', async (payload, { rejectWithValue }) => {
+	try {
+		const response = await api.post<CreateCheckpointResponse>('/checkpoints/create', {
+			name: payload.name,
+		});
+
+		if (response.data?.success) {
+			return response.data;
+		}
+
+		return rejectWithValue(response.data?.message ?? 'Failed to create checkpoint.');
+	} catch (error: unknown) {
+		return rejectWithValue(extractErrorMessage(error, 'Failed to create checkpoint.'));
+	}
+});
+
 export const updateCheckpointAdmin = createAsyncThunk<
 	UpdateCheckpointAdminResponse,
 	UpdateCheckpointAdminPayload,
@@ -186,6 +260,76 @@ export const updateCheckpointAdmin = createAsyncThunk<
 	}
 });
 
+export const updateCheckpointWorker = createAsyncThunk<
+	UpdateCheckpointWorkerResponse,
+	UpdateCheckpointWorkerPayload,
+	{ rejectValue: string; state: { auth: { checkpointId: string | null } } }
+>('checkpoint/updateCheckpointWorker', async (payload, { getState, rejectWithValue }) => {
+	const checkpointId = getState().auth.checkpointId;
+
+	if (!checkpointId) {
+		console.error('updateCheckpointWorker rejected response:', {
+			message: 'No checkpoint is assigned to the current user.',
+		});
+		return rejectWithValue('No checkpoint is assigned to the current user.');
+	}
+
+	try {
+		const response = await api.patch<UpdateCheckpointWorkerResponse>(
+			`/checkpoints/${checkpointId}/workers`,
+			{
+				serviceNumber: payload.serviceNumber,
+				action: payload.action,
+			}
+		);
+
+		if (response.data?.success) {
+			return response.data;
+		}
+
+		console.error('updateCheckpointWorker rejected response:', response.data);
+
+		return rejectWithValue(response.data?.message ?? 'Failed to update checkpoint worker.');
+	} catch (error: unknown) {
+		if (axios.isAxiosError(error)) {
+			console.error('updateCheckpointWorker rejected response:', {
+				status: error.response?.status,
+				data: error.response?.data,
+				headers: error.response?.headers,
+				error,
+			});
+		} else {
+			console.error('updateCheckpointWorker rejected response:', error);
+		}
+
+		return rejectWithValue(extractErrorMessage(error, 'Failed to update checkpoint worker.'));
+	}
+});
+
+export const fetchCurrentUserCheckpoint = createAsyncThunk<
+	GetCurrentCheckpointResponse,
+	void,
+	{ rejectValue: string; state: { auth: { checkpointId: string | null } } }
+>('checkpoint/fetchCurrentUserCheckpoint', async (_, { getState, rejectWithValue }) => {
+	const checkpointId = getState().auth.checkpointId;
+
+	if (!checkpointId) {
+		return rejectWithValue('No checkpoint is assigned to the current user.');
+	}
+
+	try {
+		const response = await api.get<GetCurrentCheckpointResponse>(`/checkpoints`);
+
+		if (response.data?.success) {
+			return response.data;
+		}
+
+		return rejectWithValue(response.data?.message ?? 'Failed to fetch checkpoint details.');
+	} catch (error: unknown) {
+		return rejectWithValue(extractErrorMessage(error, 'Failed to fetch checkpoint details.'));
+	}
+});
+
 const checkpointSlice = createSlice({
 	name: 'checkpoint',
 	initialState,
@@ -196,6 +340,27 @@ const checkpointSlice = createSlice({
 	},
 	extraReducers: (builder) => {
 		builder
+			.addCase(createCheckpoint.pending, (state) => {
+				state.isLoading = true;
+				state.error = null;
+			})
+			.addCase(createCheckpoint.fulfilled, (state, action) => {
+				state.isLoading = false;
+				state.error = null;
+				state.message = action.payload.message;
+
+				const exists = state.checkpoints.some(
+					(checkpoint) => checkpoint._id === action.payload.checkpoint._id
+				);
+
+				if (!exists) {
+					state.checkpoints = [action.payload.checkpoint, ...state.checkpoints];
+				}
+			})
+			.addCase(createCheckpoint.rejected, (state, action) => {
+				state.isLoading = false;
+				state.error = action.payload ?? 'Failed to create checkpoint.';
+			})
 			.addCase(fetchCheckpoints.pending, (state, action) => {
 				const isLoadMore = Boolean(action.meta.arg?.cursor);
 
@@ -276,6 +441,54 @@ const checkpointSlice = createSlice({
 			.addCase(updateCheckpointAdmin.rejected, (state, action) => {
 				state.isAdminActionLoading = false;
 				state.error = action.payload ?? 'Failed to update checkpoint admin.';
+			})
+			.addCase(updateCheckpointWorker.pending, (state) => {
+				state.isWorkerActionLoading = true;
+				state.error = null;
+			})
+			.addCase(updateCheckpointWorker.fulfilled, (state, action) => {
+				state.isWorkerActionLoading = false;
+				state.error = null;
+				state.message = action.payload.message;
+
+				if (!state.currentCheckpoint) {
+					return;
+				}
+
+				if (action.meta.arg.action === 'remove') {
+					state.currentCheckpoint.users = state.currentCheckpoint.users.filter(
+						(user) => user.serviceNumber !== action.meta.arg.serviceNumber
+					);
+					return;
+				}
+
+				if (action.payload.worker) {
+					const exists = state.currentCheckpoint.users.some(
+						(user) => user._id === action.payload.worker?._id
+					);
+
+					if (!exists) {
+						state.currentCheckpoint.users.push(action.payload.worker);
+					}
+				}
+			})
+			.addCase(updateCheckpointWorker.rejected, (state, action) => {
+				state.isWorkerActionLoading = false;
+				state.error = action.payload ?? 'Failed to update checkpoint worker.';
+			})
+			.addCase(fetchCurrentUserCheckpoint.pending, (state) => {
+				state.isCurrentCheckpointLoading = true;
+				state.error = null;
+			})
+			.addCase(fetchCurrentUserCheckpoint.fulfilled, (state, action) => {
+				state.isCurrentCheckpointLoading = false;
+				state.error = null;
+				state.message = action.payload.message;
+				state.currentCheckpoint = action.payload.checkpoint;
+			})
+			.addCase(fetchCurrentUserCheckpoint.rejected, (state, action) => {
+				state.isCurrentCheckpointLoading = false;
+				state.error = action.payload ?? 'Failed to fetch checkpoint details.';
 			});
 	},
 });
