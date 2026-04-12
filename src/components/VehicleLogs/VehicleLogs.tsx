@@ -1,55 +1,14 @@
-import React, { useState } from 'react';
-import { FileText, Filter, Download, Calendar } from 'lucide-react';
-
-interface Vehicle {
-  id: string;
-  regnNo: string;
-  loadClass: string;
-  loadType: string;
-  registeredBy: string;
-  dateAcquired: string;
-  status: 'active' | 'inactive';
-}
+import React, { useEffect, useMemo, useState } from 'react';
+import { FileText, Filter, Download } from 'lucide-react';
+import { useDispatch, useSelector } from 'react-redux';
+import type { AppDispatch, RootState } from '../../store/store';
+import { listVehicles } from '../../store/slice/vehicleSlice';
 
 const VehicleLogs: React.FC = () => {
-  const [vehicles, setVehicles] = useState<Vehicle[]>([
-    {
-      id: '1',
-      regnNo: 'ABC1234',
-      loadClass: '9 ton',
-      loadType: 'Industrial',
-      registeredBy: 'Sgt. Johnson',
-      dateAcquired: '2024-01-15',
-      status: 'active'
-    },
-    {
-      id: '2',
-      regnNo: 'DEF5678',
-      loadClass: '18 ton',
-      loadType: 'Agricultural',
-      registeredBy: 'Cpl. Williams',
-      dateAcquired: '2024-01-14',
-      status: 'active'
-    },
-    {
-      id: '3',
-      regnNo: 'GHI9012',
-      loadClass: 'Less than 9 ton',
-      loadType: 'Packages',
-      registeredBy: 'Sgt. Johnson',
-      dateAcquired: '2024-01-13',
-      status: 'active'
-    },
-    {
-      id: '4',
-      regnNo: 'JKL3456',
-      loadClass: '24 ton',
-      loadType: 'Industrial',
-      registeredBy: 'Pvt. Davis',
-      dateAcquired: '2024-01-12',
-      status: 'inactive'
-    }
-  ]);
+  const dispatch = useDispatch<AppDispatch>();
+  const { vehicles, isListing, isFetchingMore, listError, nextCursor, hasMore } = useSelector(
+    (state: RootState) => state.vehicle
+  );
 
   const [filters, setFilters] = useState({
     loadClass: '',
@@ -57,8 +16,33 @@ const VehicleLogs: React.FC = () => {
     sortBy: 'dateAcquired'
   });
 
-  const loadClasses = ['Less than 9 ton', '9 ton', '18 ton', '24 ton'];
-  const loadTypes = ['Packages', 'Industrial', 'Agricultural', 'Other'];
+  useEffect(() => {
+    dispatch(listVehicles({ limit: 20 }));
+  }, [dispatch]);
+
+  const loadClasses = useMemo(
+    () => Array.from(new Set(vehicles.map((vehicle) => vehicle.loadClass))).sort(),
+    [vehicles]
+  );
+
+  const loadTypes = useMemo(
+    () => Array.from(new Set(vehicles.map((vehicle) => vehicle.loadType))).sort(),
+    [vehicles]
+  );
+
+  const formatDate = (isoDate: string) => {
+    const date = new Date(isoDate);
+
+    if (Number.isNaN(date.getTime())) {
+      return '-';
+    }
+
+    return date.toLocaleDateString('en-IN', {
+      year: 'numeric',
+      month: 'short',
+      day: '2-digit',
+    });
+  };
 
   const filteredVehicles = vehicles
     .filter(vehicle => {
@@ -69,7 +53,7 @@ const VehicleLogs: React.FC = () => {
     .sort((a, b) => {
       switch (filters.sortBy) {
         case 'dateAcquired':
-          return new Date(b.dateAcquired).getTime() - new Date(a.dateAcquired).getTime();
+          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
         case 'loadClass':
           return a.loadClass.localeCompare(b.loadClass);
         case 'loadType':
@@ -83,6 +67,14 @@ const VehicleLogs: React.FC = () => {
     setFilters(prev => ({ ...prev, [key]: value }));
   };
 
+  const handleLoadMore = () => {
+    if (!hasMore || !nextCursor || isFetchingMore) {
+      return;
+    }
+
+    dispatch(listVehicles({ cursor: nextCursor, limit: 20, append: true }));
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -93,13 +85,19 @@ const VehicleLogs: React.FC = () => {
             <p className="text-gray-400">View all vehicles registered at your checkpoint</p>
           </div>
         </div>
-        <button className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors">
+        <button className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors" type="button">
           <Download className="h-5 w-5" />
           <span>Export</span>
         </button>
       </div>
 
       <div className="bg-gray-800 p-6 rounded-lg shadow-md border border-gray-700">
+        {listError && (
+          <div className="mb-4 rounded-md border border-red-700 bg-red-900/40 px-4 py-3 text-sm text-red-200">
+            {listError}
+          </div>
+        )}
+
         <div className="flex flex-wrap items-center gap-4 mb-6">
           <div className="flex items-center space-x-2">
             <Filter className="h-5 w-5 text-gray-400" />
@@ -153,29 +151,51 @@ const VehicleLogs: React.FC = () => {
             </thead>
             <tbody>
               {filteredVehicles.map((vehicle) => (
-                <tr key={vehicle.id} className="border-b border-gray-700 hover:bg-gray-700">
-                  <td className="py-3 px-4 font-medium text-white">{vehicle.regnNo}</td>
+                <tr key={vehicle._id} className="border-b border-gray-700 hover:bg-gray-700">
+                  <td className="py-3 px-4 font-medium text-white">{vehicle.regNo}</td>
                   <td className="py-3 px-4 text-gray-300">{vehicle.loadClass}</td>
                   <td className="py-3 px-4 text-gray-300">{vehicle.loadType}</td>
-                  <td className="py-3 px-4 text-gray-300">{vehicle.registeredBy}</td>
-                  <td className="py-3 px-4 text-gray-300">{vehicle.dateAcquired}</td>
+                  <td className="py-3 px-4 text-gray-300">{vehicle.user}</td>
+                  <td className="py-3 px-4 text-gray-300">{formatDate(vehicle.createdAt)}</td>
                   <td className="py-3 px-4">
                     <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${
-                      vehicle.status === 'active' 
+                      !vehicle.delete 
                         ? 'bg-green-900 text-green-200' 
                         : 'bg-red-900 text-red-200'
                     }`}>
-                      {vehicle.status}
+                      {!vehicle.delete ? 'active' : 'inactive'}
                     </span>
                   </td>
                 </tr>
               ))}
+              {!isListing && filteredVehicles.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="py-6 text-center text-gray-400">
+                    No vehicles found.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
 
-        <div className="mt-4 text-sm text-gray-400">
-          Showing {filteredVehicles.length} of {vehicles.length} vehicles
+        {isListing && (
+          <div className="mt-4 text-sm text-gray-400">Loading vehicles...</div>
+        )}
+
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-gray-400">
+          <span>Showing {filteredVehicles.length} of {vehicles.length} vehicles</span>
+
+          {hasMore && (
+            <button
+              type="button"
+              onClick={handleLoadMore}
+              disabled={isFetchingMore}
+              className="rounded-md border border-gray-600 px-3 py-1 text-gray-200 hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isFetchingMore ? 'Loading more...' : 'Load More'}
+            </button>
+          )}
         </div>
       </div>
     </div>
