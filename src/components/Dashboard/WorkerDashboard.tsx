@@ -42,11 +42,11 @@ const WorkerDashboard: React.FC = () => {
 
   if (!user?.checkpoint) {
     return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center p-4 sm:p-6">
         <div className="max-w-md w-full text-center">
-          <div className="bg-gray-800 p-8 rounded-lg shadow-lg">
-            <User className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-            <h2 className="text-2xl font-bold text-white mb-4">No Checkpoint Assigned</h2>
+          <div className="bg-gray-800 p-6 sm:p-8 rounded-lg shadow-lg">
+            <User className="h-14 w-14 sm:h-16 sm:w-16 text-gray-400 mx-auto mb-4" />
+            <h2 className="text-xl sm:text-2xl font-bold text-white mb-4">No Checkpoint Assigned</h2>
             <p className="text-gray-400 mb-6">
               No checkpoint assigned yet. Please contact the higher authority.
             </p>
@@ -64,27 +64,27 @@ const WorkerDashboard: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center">
         <div>
-          <h1 className="text-3xl font-bold text-white">Worker Dashboard</h1>
-          <p className="text-gray-400">Welcome back, {user?.name}</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-white">Worker Dashboard</h1>
+          <p className="text-sm sm:text-base text-gray-400">Welcome back, {user?.name}</p>
         </div>
         <Link
           to="/vehicle-entry"
-          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
+          className="w-full sm:w-auto justify-center bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
         >
           <Truck className="h-5 w-5" />
           <span>Register Vehicle</span>
         </Link>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-6">
         {stats.map((stat, index) => (
-          <div key={index} className="bg-gray-800 p-6 rounded-lg shadow-md border border-gray-700">
+          <div key={index} className="bg-gray-800 p-4 sm:p-6 rounded-lg shadow-md border border-gray-700">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-400">{stat.title}</p>
-                <p className="text-2xl font-bold text-white">{stat.value}</p>
+                <p className="text-xl sm:text-2xl font-bold text-white break-words">{stat.value}</p>
               </div>
               <div className={`${stat.color} p-3 rounded-full`}>
                 <stat.icon className="h-6 w-6 text-white" />
@@ -94,23 +94,23 @@ const WorkerDashboard: React.FC = () => {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-gray-800 p-6 rounded-lg shadow-md border border-gray-700">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-6">
+        <div className="bg-gray-800 p-4 sm:p-6 rounded-lg shadow-md border border-gray-700">
           <h3 className="text-lg font-semibold text-white mb-4">Recent Activity</h3>
           <div className="space-y-3">
             {recentActivity.map((activity) => (
-              <div key={activity.id} className="flex justify-between items-center p-3 bg-gray-700 rounded-lg">
+              <div key={activity.id} className="flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-center p-3 bg-gray-700 rounded-lg">
                 <div>
                   <p className="font-medium text-white">{activity.action}</p>
                   <p className="text-sm text-gray-400">{activity.detail}</p>
                 </div>
-                <span className="text-xs text-gray-500">{activity.time}</span>
+                <span className="text-xs text-gray-500 self-start sm:self-auto">{activity.time}</span>
               </div>
             ))}
           </div>
         </div>
 
-        <div className="bg-gray-800 p-6 rounded-lg shadow-md border border-gray-700">
+        <div className="bg-gray-800 p-4 sm:p-6 rounded-lg shadow-md border border-gray-700">
           <h3 className="text-lg font-semibold text-white mb-4">Quick Actions</h3>
           <div className="space-y-3">
             <Link
